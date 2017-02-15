@@ -1,0 +1,119 @@
+#!/usr/bin/python
+
+
+# standard python library imports
+import os
+import sys
+import re
+from collections import deque
+
+
+def main(argv):
+    
+    try:
+        directory = argv[0] if argv else '.'
+        # Gathering all the files List 
+        files = sorted(os.listdir(str(directory)))
+    except OSError:
+        print 'please make sure the path exists..., EXITING'
+        sys.exit()
+
+
+    # using deque as a stack to push the files as they come
+    data = deque()
+
+
+    # loop over the fileList
+    for f in files:
+        # splitting the file name in to numeric (\d+) and non-numeric(\D+) parts then clubbing it in to a set
+        fParts = set(re.findall('\d+', f) + re.findall('\D+', f))
+        lastFParts = set()
+
+
+        # Main Dictionary which is of following format which will be pushed to the stack
+        # {'fileNamePattern' : {    'start'    : [ <range1 start>, <range2 start> ]
+        #                           'end'      : [ <range1 end> , <range2 end> ]
+        #                           'length'   : <padding length>
+        #                           'count'    : <number of files> } }
+        dataDict = {}
+
+
+        if len(data):
+            # Get the last file entry in stack
+            lastF = data[-1].keys()[0]
+            # splitting the file name in to numeric (\d+) and non-numeric(\D+) parts then clubbing it in to a set
+            lastFParts = set(re.findall('\d+', lastF) + re.findall('\D+',lastF))
+            matchingPattern = re.match(lastF, f)
+            
+
+            # most of the EFFICIENCY comes from here since we might find the pattern already recorded in case of a large number of files with in the sequence
+            # Also checking if previous file is not a substring of current file because it is a positive RE match (lastF not in f)
+            # Remote possibility of finding a positive RE match where X.Y can be matched to X<anything>Y at the start of file name
+            if matchingPattern and lastF not in f and lastF.replace('.', '_') not in f:
+                # pop the last entry to update the values further down and push it back again
+                value = data.pop().values()[0]
+                count = value['count'] + 1
+
+
+                number = matchingPattern.group(1)
+                endNumber = int(value['end'][-1])
+
+
+                start = value['start']
+                end = value['end']
+                # Break found in the sequence, record another start and end number
+                if int(number) - endNumber > 1:
+                    start.append(int(number))
+                    end.append(int(number))
+                # continuous numbers in pattern, update the sequence range end
+                else:
+                    end[-1] = endNumber + 1
+                # construct the dictionary with all the variables
+                dataDict[pattern] = { 'start' : start, 'end': end, 'length': length, 'count': count}
+                # push the pattern on the stack with required information
+                data.append(dataDict)
+                continue
+
+
+        # Diff the set of file parts to know exactly the varying part of file name        
+        diff = fParts - lastFParts 
+
+
+        # if a valid sequence was found
+        if len(diff) == 1 and list(diff)[0].isdigit() and len(lastFParts) > 1 and len(fParts) > 1:
+            # pop the last entry in stack
+            lastEntry = data.pop()
+            number = list(diff)[0]
+            length = len(number)
+            pattern = '(\d{{{0}}})'.format(length).join(f.split(number))
+            dataDict[pattern] = { 'start' : [int(number)-1], 'end': [int(number)], 'length': length, 'count': 2}
+        else:
+            dataDict[f] = [1]
+        # push the entry on to stack
+        data.append(dataDict)
+
+
+    # Finally print out the required file List as the output of lss
+    for patternDict in data:
+        k = patternDict.keys()[0]
+        v = patternDict.values()[0]
+        # if a single entry is found
+        if len(v) == 1:
+            line = '{0} {1}'.format(v[0], k)
+        else:
+            # replace the regex pattern with c-style pattern for display purpose
+            filePattern  =  k.replace('(\\d{1})','%d') if v['length'] == 1 else k.replace('(\\d{','%0').replace('})', 'd')
+            # if the file name is a not a continuous sequence, but with breaks in it, print here
+            if len(v['start']) > 1:
+                line = '{0} {1} '.format(v['count'], filePattern)
+                for k in range(len(v['start'])):
+                    line += '{0}-{1} '.format(v['start'][k], v['end'][k])
+            # if the file name is a continuous sequence, print it here
+            else:
+                line = '{0} {1} {2}-{3}'.format(v['count'], filePattern, v['start'][0],v['end'][0])
+        print line
+
+
+if __name__ == "__main__":
+    # right now just handling only one file path as argument
+    main(sys.argv[1:])            
